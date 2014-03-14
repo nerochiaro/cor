@@ -10,22 +10,22 @@
 //#define PULSEF(x) (MIN_LIGHT + ((exp(sin(x)) - 1 / E) * ((255 - MIN_LIGHT) / (E - (1 / E)))))
 
 #define MIN_LIGHT 30
-#define A (MIN_LIGHT - (1 / E))
-#define B ((255 - MIN_LIGHT) / (E - (1 / E)))
+#define MAX_LIGHT 255
+#define A (E * E * MIN_LIGHT - MAX_LIGHT) / (E * E - 1)
+#define B (E * (MAX_LIGHT - MIN_LIGHT)) / (E * E - 1)
 
 #define SAMPLES 50
 
-int period = 5000;
+int period = 2000;
 int valAt(int t) {
   return A + 
-         exp(sin(((2 * PI) / period) * (t + 0.75 * period))) * B;
+         B * exp(sin((2 * PI / period) * (t + 0.75 * period)));
 }
 
 void setup() {                
   pinMode(PANEL, OUTPUT);
   pinMode(TOUCHLED, OUTPUT);
   pinMode(TOUCH, INPUT);
-  Serial.begin(9600);
 }
 
 #define BOUNCE_TIME 200
@@ -35,14 +35,22 @@ void loop() {
   int touch = digitalRead(TOUCH);
   
   int t = 0;
+  period = 1500;
   for (int i = 0; i < SAMPLES; i++) {
     t = (period / SAMPLES) * i;
     int val = valAt(t);
-    Serial.print(val);
-    Serial.print(", ");
     analogWrite(PANEL, val);
     delay(period / SAMPLES);
   }
+  delay(250);
+  period = 500;
+  for (int i = 0; i < SAMPLES; i++) {
+    t = (period / SAMPLES) * i;
+    int val = valAt(t);
+    analogWrite(PANEL, val);
+    delay(period / SAMPLES);
+  }
+
   
   Serial.print("\n");
   
