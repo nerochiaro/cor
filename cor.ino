@@ -2,15 +2,28 @@
 #include <math.h>
 #include "button.h"
 
-#define TOUCHLED 6
-#define TOUCH 2
-#define LED_FADE_TIME 2000
+/* pins */
+
+/* these leds are reversed: pin HIGH <=> LED off */
+#define ACCEL_BUTTON0 2
+#define ACCEL_LED0 13 /* also led on arduino board, though not reversed */
+#define ACCEL_BUTTON1 4
+#define ACCEL_LED1 7
+
+#define HUE_BUTTON0 8
+#define HUE_BUTTON1 12
 
 #define PANEL 3
 
+/* RGB leds are reversed: we send 255 - value to them */
 #define LEDR 11
 #define LEDG 10
 #define LEDB 9
+
+
+#define ACCELERATOR_TIMEOUT 2000
+#define LONG_BOUNCE_PERIOD 1500
+#define SHORT_BOUNCE_PERIOD 450
 
 #define E 2.71828
 
@@ -26,17 +39,32 @@ int period = 1500;
 #define SAMPLES 50
 #define C (E * E - 1)
 
-button_t button0 = {
-  TOUCH, /* pin*/
-  LOW, /* state */
-  LOW, /* last_reading */
-  0, /* last_debounce_time */
-  /* led */
-  {
-    TOUCHLED, /* pin */
-    false, /* forced */
-    -1 /* fade start */
-  }
+#define BUTTONS_LENGTH 4
+button_t buttons[BUTTONS_LENGTH] = {
+    {
+        ACCEL_BUTTON0, /* pin*/
+        LOW, /* state */
+        LOW, /* last_reading */
+        0, /* last_debounce_time */
+    },
+    {
+        ACCEL_BUTTON1, /* pin*/
+        LOW, /* state */
+        LOW, /* last_reading */
+        0, /* last_debounce_time */
+    },
+    {
+        HUE_BUTTON0, /* pin*/
+        LOW, /* state */
+        LOW, /* last_reading */
+        0, /* last_debounce_time */
+    },
+    {
+        HUE_BUTTON1, /* pin*/
+        LOW, /* state */
+        LOW, /* last_reading */
+        0, /* last_debounce_time */
+    }
 };
 
 int valAt(int t) {
@@ -45,40 +73,42 @@ int valAt(int t) {
          exp(sin((2 * PI / period) * (t + 0.75 * period)));
 }
 
-void start_fade(led_t *led) {
-  led->forced = false;
-  led->fade_start = millis();
+/* accelerator stuff */
+
+bool accelerator_is_on(accelerator_t *accelerator) {
+    return accelerator->forced || accelerator->timeout_wait;
 }
 
-void force_on(led_t *led) {
-  led->forced = true;
-  led->fade_start = -1;
+void accelerator_enable(accelerator_t *accelerator) {
+    accelerator->forced = true;
 }
 
-void update_led(led_t *led) {
-  int led_val = 0;
+void accelerator_disable(accelerator_t *accelerator) {
+    accelerator->forced = false;
+    accelerator->timeout_wait = true;
+    accelerator->end_time = millis() + ACCELERATOR_TIMEOUT;
+}
 
-  if (led->forced) {
-    led_val = 255;
-  } else if (led->fade_start >= 0) {
-    long time_since_trigger = millis() - led->fade_start;
-
-    if (time_since_trigger <= LED_FADE_TIME) {
-      led_val = 255 - time_since_trigger * 255 / LED_FADE_TIME;
+void accelerator_update(accelerator_t *accelerator) {
+    if (!accelerator->forced
+            && accelerator->timeout_wait
+            && millis() > accelerator->end_time) {
+        accelerator->timeout_wait = false;
+        /* accelerator->end_time becomes meaningless */
     }
-  }
-  analogWrite(led->pin, led_val);
 }
 
+/* button stuff */
 void on_press(button_t *button) {
-  force_on(&button->led);
 }
 
 void on_release(button_t *button) {
-  start_fade(&button->led);
 }
 
-/* Should be called frequently in loop() */
+bool is_pressed(button_t *button) {
+    return button->state == HIGH;
+}
+
 void check_button(button_t *button) {
   int reading = digitalRead(button->pin);
 
@@ -96,7 +126,7 @@ void check_button(button_t *button) {
     // if the button state has changed:
     if (reading != button->state) {
       button->state = reading;
-      if (button->state == HIGH)
+      if (is_pressed(button))
         on_press(button);
       else
         on_release(button);
@@ -108,22 +138,26 @@ void check_button(button_t *button) {
   button->last_reading = reading;
 }
 
-long lastTouch = 0;
+void check_buttons(button_t *button) {
+    for (int i=0; i<BUTTONS_LENGTH; i++) {
+        check_button(&buttons[i]);
+    }
+}
 
 unsigned char r, g, b = 0;
 unsigned char hue = 0;
 
 void setup() {                
   pinMode(PANEL, OUTPUT);
-  pinMode(TOUCHLED, OUTPUT);
-  pinMode(TOUCH, INPUT);
+  pinMode(ACCEL_LED0, OUTPUT);
+  pinMode(ACCEL_BUTTON0, INPUT);
   
   pinMode(LEDR, OUTPUT);
   pinMode(LEDG, OUTPUT);
   pinMode(LEDB, OUTPUT);
   
   // set initial LED state
-  digitalWrite(TOUCHLED, LOW);
+  digitalWrite(ACCEL_LED0, LOW);
 }
 
 /* HSV to RGB conversion function with only integer
