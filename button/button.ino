@@ -2,15 +2,22 @@
 
 #define TOUCHLED 11
 #define TOUCH 8
+#define LED_FADE_TIME 2000
 
 #define DEBOUNCE_DELAY 100
 
 
 button_t button0 = {
-  TOUCH, /* button_pin*/
-  LOW, /* button_state */
-  LOW, /* last_button_state */
-  0 /* last_debounce_time */
+  TOUCH, /* pin*/
+  LOW, /* state */
+  LOW, /* last_reading */
+  0, /* last_debounce_time */
+  /* led */
+  {
+    TOUCHLED, /* pin */
+    false, /* forced */
+    -1 /* fade start */
+  }
 };
 
 void setup() {
@@ -21,16 +28,37 @@ void setup() {
   digitalWrite(TOUCHLED, LOW);
 }
 
-void on_press(button_t *button) {
-  if (button->pin == TOUCH) {
-    digitalWrite(TOUCHLED, HIGH);
+void start_fade(led_t *led) {
+  led->forced = false;
+  led->fade_start = millis();
+}
+
+void force_on(led_t *led) {
+  led->forced = true;
+  led->fade_start = -1;
+}
+
+void update_led(led_t *led) {
+  int led_val = 0;
+
+  if (led->forced) {
+    led_val = 255;
+  } else if (led->fade_start >= 0) {
+    long time_since_trigger = millis() - led->fade_start;
+
+    if (time_since_trigger <= LED_FADE_TIME) {
+      led_val = 255 - time_since_trigger * 255 / LED_FADE_TIME;
+    }
   }
+  analogWrite(led->pin, led_val);
+}
+
+void on_press(button_t *button) {
+  force_on(&button->led);
 }
 
 void on_release(button_t *button) {
-  if (button->pin == TOUCH) {
-    digitalWrite(TOUCHLED, LOW);
-  }
+  start_fade(&button->led);
 }
 
 /* Should be called frequently in loop() */
@@ -65,4 +93,5 @@ void check_button(button_t *button) {
 
 void loop() {
   check_button(&button0);
+  update_led(&button0.led);
 }
