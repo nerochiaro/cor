@@ -9,17 +9,20 @@
 // Based on http://sean.voisen.org/blog/2011/10/breathing-led-with-arduino/
 //#define PULSEF(x) (MIN_LIGHT + ((exp(sin(x)) - 1 / E) * ((255 - MIN_LIGHT) / (E - (1 / E)))))
 
-#define MIN_LIGHT 30
-#define MAX_LIGHT 255
+int min_light = 20;
+int max_light = 255;
+int period = 1500;
 #define A (E * E * MIN_LIGHT - MAX_LIGHT) / (E * E - 1)
 #define B (E * (MAX_LIGHT - MIN_LIGHT)) / (E * E - 1)
 
 #define SAMPLES 50
+#define C (E * E - 1)
 
-int period = 2000;
+
 int valAt(int t) {
-  return A + 
-         B * exp(sin((2 * PI / period) * (t + 0.75 * period)));
+  return (E * E * min_light - max_light) / C + 
+         (E * (max_light - min_light)) / C * 
+         exp(sin((2 * PI / period) * (t + 0.75 * period)));
 }
 
 void setup() {                
@@ -36,14 +39,15 @@ void loop() {
   
   int t = 0;
   period = 1500;
+  max_light = 255;
   for (int i = 0; i < SAMPLES; i++) {
     t = (period / SAMPLES) * i;
     int val = valAt(t);
     analogWrite(PANEL, val);
     delay(period / SAMPLES);
   }
-  delay(250);
-  period = 500;
+  period = 450;
+  max_light = 120;
   for (int i = 0; i < SAMPLES; i++) {
     t = (period / SAMPLES) * i;
     int val = valAt(t);
@@ -64,6 +68,7 @@ void loop() {
 //   } else {
 //     analogWrite(TOUCHLED, 0);
 //   }
+  delay(1000);
 }
 
 
