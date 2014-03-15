@@ -1,6 +1,6 @@
 /* vim: set ft=cpp: */
 #include <math.h>
-#include "button/button.h"
+#include "button.h"
 
 #define TOUCHLED 6
 #define TOUCH 2
