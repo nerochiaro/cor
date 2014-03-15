@@ -1,3 +1,4 @@
+/* vim: set ft=cpp: */
 #include <math.h>
 #include "button/button.h"
 
