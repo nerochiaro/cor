@@ -1,11 +1,10 @@
 #include "button.h"
 
-#define TOUCHLED 11
-#define TOUCH 8
+#define TOUCHLED 6
+#define TOUCH 2
 #define LED_FADE_TIME 2000
 
 #define DEBOUNCE_DELAY 100
-
 
 button_t button0 = {
   TOUCH, /* pin*/

@@ -12,3 +12,8 @@ typedef struct {
   led_t led;
 } button_t;
 
+#define DEBOUNCE_DELAY 100
+#define BOUNCE_TIME 200
+
+
+

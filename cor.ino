@@ -1,8 +1,11 @@
 #include <math.h>
+#include "button/button.h"
+
+#define TOUCHLED 6
+#define TOUCH 2
+#define LED_FADE_TIME 2000
 
 #define PANEL 3
-#define TOUCHLED 11
-#define TOUCH 8
 
 #define LEDR 11
 #define LEDG 10
@@ -22,12 +25,92 @@ int period = 1500;
 #define SAMPLES 50
 #define C (E * E - 1)
 
+button_t button0 = {
+  TOUCH, /* pin*/
+  LOW, /* state */
+  LOW, /* last_reading */
+  0, /* last_debounce_time */
+  /* led */
+  {
+    TOUCHLED, /* pin */
+    false, /* forced */
+    -1 /* fade start */
+  }
+};
 
 int valAt(int t) {
   return (E * E * min_light - max_light) / C + 
          (E * (max_light - min_light)) / C * 
          exp(sin((2 * PI / period) * (t + 0.75 * period)));
 }
+
+void start_fade(led_t *led) {
+  led->forced = false;
+  led->fade_start = millis();
+}
+
+void force_on(led_t *led) {
+  led->forced = true;
+  led->fade_start = -1;
+}
+
+void update_led(led_t *led) {
+  int led_val = 0;
+
+  if (led->forced) {
+    led_val = 255;
+  } else if (led->fade_start >= 0) {
+    long time_since_trigger = millis() - led->fade_start;
+
+    if (time_since_trigger <= LED_FADE_TIME) {
+      led_val = 255 - time_since_trigger * 255 / LED_FADE_TIME;
+    }
+  }
+  analogWrite(led->pin, led_val);
+}
+
+void on_press(button_t *button) {
+  force_on(&button->led);
+}
+
+void on_release(button_t *button) {
+  start_fade(&button->led);
+}
+
+/* Should be called frequently in loop() */
+void check_button(button_t *button) {
+  int reading = digitalRead(button->pin);
+
+  long now = millis();
+
+  if (reading != button->last_reading) {
+    // reset the debouncing timer
+    button->last_debounce_time = now;
+  }
+
+  if ((now - button->last_debounce_time) > DEBOUNCE_DELAY) {
+    // whatever the reading is at, it's been there for longer
+    // than the debounce delay, so take it as the actual current state:
+
+    // if the button state has changed:
+    if (reading != button->state) {
+      button->state = reading;
+      if (button->state == HIGH)
+        on_press(button);
+      else
+        on_release(button);
+    }
+  }
+
+  // save the reading.  Next time through the loop,
+  // it'll be the lastButtonState:
+  button->last_reading = reading;
+}
+
+long lastTouch = 0;
+
+unsigned char r, g, b = 0;
+unsigned char hue = 0;
 
 void setup() {                
   pinMode(PANEL, OUTPUT);
@@ -37,15 +120,14 @@ void setup() {
   pinMode(LEDR, OUTPUT);
   pinMode(LEDG, OUTPUT);
   pinMode(LEDB, OUTPUT);
+  
+  // set initial LED state
+  digitalWrite(TOUCHLED, LOW);
 }
 
-#define BOUNCE_TIME 200
-long lastTouch = 0;
-
-unsigned char r, g, b = 0;
-
 /* HSV to RGB conversion function with only integer
- * math */
+ * math. S and V go from 0 to 255, and H goes from 0 to 360
+ */
 void
 hsvtorgb(unsigned char *r, unsigned char *g, unsigned char *b, unsigned char h, unsigned char s, unsigned char v)
 {
@@ -86,8 +168,6 @@ hsvtorgb(unsigned char *r, unsigned char *g, unsigned char *b, unsigned char h, 
     return;
 }
                          
-                         
-unsigned char hue = 0;
 void updateHue() {
   hue = (hue == 360) ? 0 : hue + 1;
   hsvtorgb(&r, &g, &b, hue, 255, 255); 
@@ -105,7 +185,11 @@ void loop() {
     t = (period / SAMPLES) * i;
     int val = valAt(t);
     analogWrite(PANEL, val);
+    
     updateHue();
+    check_button(&button0);
+    update_led(&button0.led);
+  
     delay(period / SAMPLES);
   }
   period = 450;
@@ -114,11 +198,16 @@ void loop() {
     t = (period / SAMPLES) * i;
     int val = valAt(t);
     analogWrite(PANEL, val);
+
     updateHue();
+    check_button(&button0);
+    update_led(&button0.led);
+
     delay(period / SAMPLES);
   }
 
   delay(1000);
 }
+
 
 
