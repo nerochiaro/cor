@@ -35,8 +35,6 @@ void setup() {
 long lastTouch = 0;
 
 void loop() {
-  int touch = digitalRead(TOUCH);
-  
   int t = 0;
   period = 1500;
   max_light = 255;
@@ -55,19 +53,6 @@ void loop() {
     delay(period / SAMPLES);
   }
 
-  
-  Serial.print("\n");
-  
-  analogWrite(PANEL, 0);
-  delay(2000);
-//   if (touch == HIGH) {
-// //     if (now - lastTouch > BOUNCE_TIME) {
-//       analogWrite(TOUCHLED, 255);
-// //     }
-//     lastTouch = now;
-//   } else {
-//     analogWrite(TOUCHLED, 0);
-//   }
   delay(1000);
 }
 
