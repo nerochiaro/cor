@@ -5,15 +5,15 @@
 /* pins */
 
 /* these leds are reversed: pin HIGH <=> LED off */
-#define ACCEL_BUTTON0_PIN 2
+#define ACCEL_BUTTON0_PIN 12
 #define ACCEL_LED0 13 /* also led on arduino board, though not reversed */
-#define ACCEL_BUTTON1_PIN 4
-#define ACCEL_LED1 7
+#define ACCEL_BUTTON1_PIN 2
+#define ACCEL_LED1 3
 
-#define HUE_BUTTON0_PIN 8
-#define HUE_BUTTON1_PIN 12
+#define HUE_BUTTON0_PIN 0
+#define HUE_BUTTON1_PIN 1
 
-#define PANEL 3
+#define PANEL 6
 
 /* RGB leds are reversed: we send 255 - value to them */
 #define LEDR 11
