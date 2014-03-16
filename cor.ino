@@ -1,41 +1,92 @@
+/* vim: set ft=cpp: */
 #include <math.h>
-#include "button/button.h"
+#include "button.h"
 
-#define TOUCHLED 6
-#define TOUCH 2
-#define LED_FADE_TIME 2000
+/* pins */
 
-#define PANEL 3
+/* these leds are reversed: pin HIGH <=> LED off */
+#define ACCEL_BUTTON0_PIN 12
+#define ACCEL_LED0 13 /* also led on arduino board, though not reversed */
+#define ACCEL_BUTTON1_PIN 2
+#define ACCEL_LED1 3
 
+#define HUE_BUTTON0_PIN 0
+#define HUE_BUTTON1_PIN 1
+
+#define PANEL 6
+
+/* RGB leds are reversed: we send 255 - value to them */
 #define LEDR 11
 #define LEDG 10
 #define LEDB 9
 
-#define E 2.71828
 
-// Based on http://sean.voisen.org/blog/2011/10/breathing-led-with-arduino/
-//#define PULSEF(x) (MIN_LIGHT + ((exp(sin(x)) - 1 / E) * ((255 - MIN_LIGHT) / (E - (1 / E)))))
+#define ACCELERATOR_TIMEOUT 2000
+#define LONG_BOUNCE_PERIOD 1500
+#define SHORT_BOUNCE_PERIOD 750
+
+#define E 2.71828
 
 int min_light = 20;
 int max_light = 255;
-int period = 1500;
-#define A (E * E * MIN_LIGHT - MAX_LIGHT) / (E * E - 1)
-#define B (E * (MAX_LIGHT - MIN_LIGHT)) / (E * E - 1)
+int period = LONG_BOUNCE_PERIOD;
+int acceleration_divider = 1;
 
 #define SAMPLES 50
 #define C (E * E - 1)
 
-button_t button0 = {
-  TOUCH, /* pin*/
-  LOW, /* state */
-  LOW, /* last_reading */
-  0, /* last_debounce_time */
-  /* led */
-  {
-    TOUCHLED, /* pin */
-    false, /* forced */
-    -1 /* fade start */
-  }
+/* We keep a bit field state. Whenever that state changes, we need to stop the
+ * current bouncing and reinit the main loop. */
+#define HUE_SELECTION_MODE (1 << 0)
+#define ACCELERATOR0_ON (1 << 1)
+#define ACCELERATOR1_ON (1 << 2)
+int loop_state = 0;
+
+#define ACCEL_BUTTON0 0
+#define ACCEL_BUTTON1 1
+#define HUE_BUTTON0 2
+#define HUE_BUTTON1 3
+
+#define BUTTONS_LENGTH 4
+button_t buttons[BUTTONS_LENGTH] = {
+    {
+        ACCEL_BUTTON0_PIN, /* pin*/
+        LOW, /* state */
+        LOW, /* last_reading */
+        0, /* last_debounce_time */
+    },
+    {
+        ACCEL_BUTTON1_PIN, /* pin*/
+        LOW, /* state */
+        LOW, /* last_reading */
+        0, /* last_debounce_time */
+    },
+    {
+        HUE_BUTTON0_PIN, /* pin*/
+        LOW, /* state */
+        LOW, /* last_reading */
+        0, /* last_debounce_time */
+    },
+    {
+        HUE_BUTTON1_PIN, /* pin*/
+        LOW, /* state */
+        LOW, /* last_reading */
+        0, /* last_debounce_time */
+    }
+};
+
+#define ACCELERATORS_LENGTH 2
+accelerator_t accelerators[ACCELERATORS_LENGTH] = {
+    {
+        false, /* forced */
+        false, /* timeout_wait */
+        0 /* end_time */
+    },
+    {
+        false, /* forced */
+        false, /* timeout_wait */
+        0 /* end_time */
+    }
 };
 
 int valAt(int t) {
@@ -44,40 +95,82 @@ int valAt(int t) {
          exp(sin((2 * PI / period) * (t + 0.75 * period)));
 }
 
-void start_fade(led_t *led) {
-  led->forced = false;
-  led->fade_start = millis();
+/* accelerator stuff */
+
+bool accelerator_is_on(accelerator_t *accelerator) {
+    return accelerator->forced || accelerator->timeout_wait;
 }
 
-void force_on(led_t *led) {
-  led->forced = true;
-  led->fade_start = -1;
+void accelerator_enable(accelerator_t *accelerator) {
+    accelerator->forced = true;
 }
 
-void update_led(led_t *led) {
-  int led_val = 0;
+void accelerator_disable(accelerator_t *accelerator) {
+    accelerator->forced = false;
+    accelerator->timeout_wait = true;
+    accelerator->end_time = millis() + ACCELERATOR_TIMEOUT;
+}
 
-  if (led->forced) {
-    led_val = 255;
-  } else if (led->fade_start >= 0) {
-    long time_since_trigger = millis() - led->fade_start;
-
-    if (time_since_trigger <= LED_FADE_TIME) {
-      led_val = 255 - time_since_trigger * 255 / LED_FADE_TIME;
+void accelerator_update(accelerator_t *accelerator) {
+    if (!accelerator->forced
+            && accelerator->timeout_wait
+            && millis() > accelerator->end_time) {
+        accelerator->timeout_wait = false;
+        /* accelerator->end_time becomes meaningless */
     }
-  }
-  analogWrite(led->pin, led_val);
 }
 
+void update_accelerators() {
+    acceleration_divider = 1;
+    for (int i = 0; i < ACCELERATORS_LENGTH; i++) {
+        accelerator_update(&accelerators[i]);
+        if (accelerator_is_on(&accelerators[i])) {
+            acceleration_divider *= 2;
+        }
+    }
+
+    if (accelerator_is_on(&accelerators[0]))
+        digitalWrite(ACCEL_LED0, LOW); // led on
+    else
+        digitalWrite(ACCEL_LED0, HIGH);
+
+    if (accelerator_is_on(&accelerators[1]))
+        digitalWrite(ACCEL_LED1, LOW); // led on
+    else
+        digitalWrite(ACCEL_LED1, HIGH);
+}
+
+/* button stuff */
 void on_press(button_t *button) {
-  force_on(&button->led);
+    switch(button->pin) {
+        case ACCEL_BUTTON0_PIN:
+            accelerator_enable(&accelerators[0]);
+            break;
+        case ACCEL_BUTTON1_PIN:
+            accelerator_enable(&accelerators[1]);
+            break;
+        default:
+            break;
+    }
 }
 
 void on_release(button_t *button) {
-  start_fade(&button->led);
+    switch(button->pin) {
+        case ACCEL_BUTTON0_PIN:
+            accelerator_disable(&accelerators[0]);
+            break;
+        case ACCEL_BUTTON1_PIN:
+            accelerator_disable(&accelerators[1]);
+            break;
+        default:
+            break;
+    }
 }
 
-/* Should be called frequently in loop() */
+bool is_pressed(button_t *button) {
+    return button->state == HIGH;
+}
+
 void check_button(button_t *button) {
   int reading = digitalRead(button->pin);
 
@@ -95,7 +188,7 @@ void check_button(button_t *button) {
     // if the button state has changed:
     if (reading != button->state) {
       button->state = reading;
-      if (button->state == HIGH)
+      if (is_pressed(button))
         on_press(button);
       else
         on_release(button);
@@ -107,22 +200,64 @@ void check_button(button_t *button) {
   button->last_reading = reading;
 }
 
-long lastTouch = 0;
+void check_buttons() {
+    for (int i=0; i<BUTTONS_LENGTH; i++) {
+        check_button(&buttons[i]);
+    }
+}
+
+/* state stuff */
+
+bool is_hue_selection_mode() {
+    return is_pressed(&buttons[HUE_BUTTON0])
+            && is_pressed(&buttons[HUE_BUTTON1]);
+}
+
+int current_state() {
+    int state = 0;
+    if (is_hue_selection_mode())
+        state |= HUE_SELECTION_MODE;
+    if (accelerator_is_on(&accelerators[0]))
+        state |= ACCELERATOR0_ON;
+    if (accelerator_is_on(&accelerators[1]))
+        state |= ACCELERATOR1_ON;
+
+    return state;
+}
+
+bool need_reinit() {
+    int new_state;
+    bool result;
+
+    check_buttons();
+    update_accelerators();
+
+    new_state = current_state();
+
+    result = new_state != loop_state;
+
+    loop_state = new_state;
+
+    return result;
+}
 
 unsigned char r, g, b = 0;
 unsigned char hue = 0;
 
-void setup() {                
+void setup() {
+  pinMode(ACCEL_BUTTON0_PIN, INPUT);
+  pinMode(ACCEL_LED0, OUTPUT);
+  pinMode(ACCEL_BUTTON1_PIN, INPUT);
+  pinMode(ACCEL_LED1, OUTPUT);
+
+  pinMode(HUE_BUTTON0_PIN, INPUT);
+  pinMode(HUE_BUTTON1_PIN, INPUT);
+
   pinMode(PANEL, OUTPUT);
-  pinMode(TOUCHLED, OUTPUT);
-  pinMode(TOUCH, INPUT);
-  
+
   pinMode(LEDR, OUTPUT);
   pinMode(LEDG, OUTPUT);
   pinMode(LEDB, OUTPUT);
-  
-  // set initial LED state
-  digitalWrite(TOUCHLED, LOW);
 }
 
 /* HSV to RGB conversion function with only integer
@@ -178,35 +313,61 @@ void updateHue() {
 }
 
 void loop() {
+init:
+
+  digitalWrite(ACCEL_LED0, HIGH);
+  digitalWrite(ACCEL_LED1, HIGH);
+  analogWrite(PANEL, min_light);
+  hsvtorgb (&r, &g, &b, hue, min_light, 255);
+  analogWrite(LEDR, r);
+  analogWrite(LEDG, g);
+  analogWrite(LEDB, b);
+
+  while (is_hue_selection_mode()) {
+      updateHue();
+      delay(20);
+      if (need_reinit())
+          goto init;
+  }
+
   int t = 0;
-  period = 1500;
+  period = LONG_BOUNCE_PERIOD / acceleration_divider;
   max_light = 255;
   for (int i = 0; i < SAMPLES; i++) {
     t = (period / SAMPLES) * i;
     int val = valAt(t);
     analogWrite(PANEL, val);
-    
-    updateHue();
-    check_button(&button0);
-    update_led(&button0.led);
-  
+
     delay(period / SAMPLES);
+
+    if (need_reinit())
+        goto init;
   }
-  period = 450;
+
+  /* second bounce is on rgb, not on panel */
+  period = SHORT_BOUNCE_PERIOD / acceleration_divider;
   max_light = 120;
   for (int i = 0; i < SAMPLES; i++) {
     t = (period / SAMPLES) * i;
     int val = valAt(t);
-    analogWrite(PANEL, val);
 
-    updateHue();
-    check_button(&button0);
-    update_led(&button0.led);
+    hsvtorgb (&r, &g, &b, hue, val, 255);
+    analogWrite(LEDR, r);
+    analogWrite(LEDG, g);
+    analogWrite(LEDB, b);
 
     delay(period / SAMPLES);
+
+    if (need_reinit())
+        goto init;
   }
 
-  delay(1000);
+  for (int i = 0; i<(100/acceleration_divider); i++) {
+      delay(10);
+
+    if (need_reinit())
+        goto init;
+  }
 }
 
 
