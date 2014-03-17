@@ -10,8 +10,8 @@
 #define ACCEL_BUTTON1_PIN 2
 #define ACCEL_LED1 3
 
-#define HUE_BUTTON0_PIN 0
-#define HUE_BUTTON1_PIN 1
+#define HUE_BUTTON0_PIN 4
+#define HUE_BUTTON1_PIN 7
 
 #define PANEL 6
 
